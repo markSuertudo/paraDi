@@ -1,5 +1,6 @@
 import csv
 from datetime import datetime
+import sys
 
 
 def open_csvfile(filename: str, data_base: list) -> bool:
@@ -11,19 +12,23 @@ def open_csvfile(filename: str, data_base: list) -> bool:
              else False (if file not existing or any error reading file
     :TODO: add checking error
     """
-    with open(filename, "r", newline='') as csvfile:
-        # csv.reader() -> return reader object
-        row_data = csv.reader(csvfile, delimiter=";", quotechar='"')
-        # Convert reader object to list
-        data_base[:] = list(row_data)
-
+    try:
+        with open(filename, "r", newline='') as csvfile:
+            # csv.reader() -> return reader object
+            row_data = csv.reader(csvfile, delimiter=";", quotechar='"')
+            # Convert reader object to list
+            data_base[:] = list(row_data)
+    except FileNotFoundError:
+        print("File {} not found".format(filename))
+        return False
     return True
 
 def save_csvfile(filename: str, new_base: list) -> bool:
-    with open("new_qw.csv", "w", newline='') as csvfile:
+    with open("db_"+filename, "w", newline='') as csvfile:
         newbase = csv.writer(csvfile, delimiter = ";", quoting = csv.QUOTE_NONNUMERIC, dialect='excel')
         newbase.writerows(new_base)
     return True
+
 
 def reformat_database(data_base: list) -> bool:
     """
@@ -42,6 +47,7 @@ def reformat_database(data_base: list) -> bool:
             + data_base[indx][1:]
 
     return True
+
 
 def create_newdatabase(data_base: list) -> list:
 
@@ -76,6 +82,7 @@ def create_newdatabase(data_base: list) -> list:
                     break
         return newbase
 
+
 def deleterows_notpresent(new_base, data_base) -> None:
     # Удалить последние строки не предтавленные в исходной таблице
     # я закладываюсь на то, что начальные начинаются с 00:00 часов
@@ -85,67 +92,76 @@ def deleterows_notpresent(new_base, data_base) -> None:
     new_base[:] = new_base[:(i + 1)]  # one step back
 
 
-def add_temperature(new_base) -> None:
-    # initialize values
-    save_index = 0
-    save_value = 0.0
-    temp_step = 0.0
+def add_emptycells(new_base, column) -> None:
+    # inicializar valores? Esta accion no es necesaria aqui
+    # save_index, save_value, temp_step, i = 0, 0.0, 0.0, 0
+    # save_value = 0.0
+    # temp_step = 0.0
     i = 0
-    #for i in range(len(new_base)):
+
     while i < len(new_base):
-        if new_base[i][6] != "":
+        if new_base[i][column] != "":
             save_index = i
-            save_value = float(new_base[i][6])
+            save_value = float(new_base[i][column])
             i += 1
 
             # 2023-01-28 : Creo que errore esta aqui
             # salida de funciona en cinco cadenas de codigo abajo :)
-            while i < len(new_base) and new_base[i][6] == "":
+            while i < len(new_base) and new_base[i][column] == "":
                 i += 1
-                print("WHILE I", i)
 
-            if i >= len(new_base): # SALIDA esta aqui
+            if i >= len(new_base):
                 return i
+            # SALIDA DE FUNCION
 
-            temp_step = abs(save_value - float(new_base[i][6]))
-
-            print('INDEX', i, 'TEMP_STEP', temp_step, "Save Value", save_value, 'new_base',float(new_base[i][6]))
+            # cocinar/preparar nuevo paso
+            temp_step = abs(save_value - float(new_base[i][column]))
             temp_step = temp_step / float(i - save_index)
-            print("AND NOW TEMP_STEP", temp_step)
+
+
             for x in range(1, i-save_index):
-                if save_value < float(new_base[i][6]):
+                if save_value < float(new_base[i][column]):
                     save_value = save_value + temp_step
                 else :
                     save_value = save_value - temp_step
-                new_base[save_index + x][6] = str(save_value + temp_step)
-            i = save_index
-        i += 1
+
+                new_base[save_index + x][column] = str(round(save_value, 2))
+
 
 def main( ) -> None:
+    if len(sys.argv) != 2 :
+        print("Using: {} filename".format(sys.argv[0]))
+        return 128
+    else :
+        filename = sys.argv[1]
+
     data_base = []
-    open_csvfile("qw.csv", data_base)
+    if open_csvfile(filename, data_base):
+        # I am know format of data base and so : get information, prepare database header
+        # info = data_base[:6]
+        header = data_base[6]
+        # and prepare data
+        data_base = data_base[7:]
 
-    # I am know format of data base and so : get information, prepare database header
-    # info = data_base[:6]
-    header = data_base[6]
-    # and prepare data
-    data_base = data_base[7:]
+        reformat_database(data_base)
+        new_base = create_newdatabase(data_base)
+        deleterows_notpresent(new_base, data_base)
 
-    reformat_database(data_base)
-    new_base = create_newdatabase(data_base)
-    deleterows_notpresent(new_base, data_base)
+        # 2023-01-29 16:23 Parece que es hora de realizar "untar" en la tabla
+        #                  Añadir celdas celdas vacías
+        add_emptycells(new_base, 6)
+        add_emptycells(new_base, 7)
+        add_emptycells(new_base, 8)
+        add_emptycells(new_base, 9)
+        add_emptycells(new_base, 10)
 
-    # 2023-01-28 Quizes que es tiempo para realizar "размазывание" por tabla
-    add_temperature(new_base)
-
-    # и наконец добавляю заголовок
-    header = [header[0]] + ['year', 'month', 'day', 'hour','hour_y'] + header[1:]
-    new_base.insert(0,header)
-    # Фух! Кажется готово
+        # и наконец добавляю заголовок
+        header = [header[0]] + ['year', 'month', 'day', 'hour','hour_y'] + header[1:]
+        new_base.insert(0,header)
 
 
-    # можно сохранять (вынести и добавить проверку возможности записи)
-    save_csvfile("new_qw.csv", new_base)
+        # можно сохранять (вынести и добавить проверку возможности записи)
+        save_csvfile(filename, new_base)
 
 
 if __name__ == "__main__":
